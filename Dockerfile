@@ -74,9 +74,24 @@ RUN find /build -type f -executable -exec sh -c \
 	| sort -u | grep -E "^/" | xargs -r -I{} cp --parents {} /runtime
 
 # We also need vim and dependencies for "pdnsutil zone edit" in runtime
-RUN cp -a /usr/bin/vim /runtime/usr/bin/ \
-	&& ldd /usr/bin/vim | awk '/=>/ {print $3}' \
+RUN cp -a /usr/bin/vim.basic /runtime/usr/bin/ \
+	&& ldd /usr/bin/vim.basic | awk '/=>/ {print $3}' \
 	| sort -u | grep -E "^/" | xargs -r -I{} cp --parents {} /runtime
+
+# Convert to UsrMerge layout (Debian 13 requirement)
+# Move /lib, /lib64, /bin, /sbin to /usr and create symlinks
+RUN if [ -d /runtime/lib ]; then \
+		cp -a /runtime/lib/* /runtime/usr/lib/ && rm -rf /runtime/lib && ln -s usr/lib /runtime/lib; \
+	fi \
+	&& if [ -d /runtime/lib64 ]; then \
+		cp -a /runtime/lib64/* /runtime/usr/lib64/ && rm -rf /runtime/lib64 && ln -s usr/lib64 /runtime/lib64; \
+	fi \
+	&& if [ -d /runtime/bin ]; then \
+		cp -a /runtime/bin/* /runtime/usr/bin/ && rm -rf /runtime/bin && ln -s usr/bin /runtime/bin; \
+	fi \
+	&& if [ -d /runtime/sbin ]; then \
+		cp -a /runtime/sbin/* /runtime/usr/sbin/ && rm -rf /runtime/sbin && ln -s usr/sbin /runtime/sbin; \
+	fi
 
 # Create pdns user/group files
 RUN mkdir -p /runtime/etc \
@@ -100,17 +115,22 @@ RUN mkdir -p \
 		/runtime/var/lib/pdns \
     && chmod 0755 /runtime/etc/pdns
 
-FROM gcr.io/distroless/base-debian13:nonroot AS runtime
+# Cleanup /runtime of unnecessary files
+RUN rm -rf \
+		/runtime/usr/share/doc \
+		/runtime/usr/share/man
+
+FROM gcr.io/distroless/base-debian13 AS runtime
 
 ARG PDNS_VERSION
 
 LABEL maintainer="Joern Schonhoff <joern.schonhoff@outlook.de>"
-LABEL description="PowerDNS Authoritative Server ${PDNS_VERSION} based on Distroless Debian 12"
+LABEL description="PowerDNS Authoritative Server ${PDNS_VERSION} based on Distroless Debian 13"
 LABEL version="${PDNS_VERSION}"
 LABEL license="MIT"
 LABEL org.opencontainers.image.authors="Joern Schonhoff <joern.schonhoff@outlook.de>"
 LABEL org.opencontainers.image.created="FILLED BY BUILD SYSTEM"
-LABEL org.opencontainers.image.description="PowerDNS Authoritative Server ${PDNS_VERSION} based on Distroless Debian 12"
+LABEL org.opencontainers.image.description="PowerDNS Authoritative Server ${PDNS_VERSION} based on Distroless Debian 13"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.revision="FILLED BY BUILD SYSTEM"
 LABEL org.opencontainers.image.source="https://gitlab.com/joern_schonhoff/pdns-auth-distroless"
