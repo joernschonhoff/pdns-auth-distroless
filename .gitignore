@@ -1,0 +1,9 @@
+# gitlab-ci-local artifacts
+.gitlab-ci-local/
+.gitlab-ci-local-variables.yml
+output/
+
+# Environment files (use .env.example as template)
+.env
+**/.env
+!**/.env.example
