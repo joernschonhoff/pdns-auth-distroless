@@ -1,9 +1,21 @@
-FROM debian:13-slim AS builder
+ARG DEBIAN_BASE_IMAGE=debian:13-slim@sha256:b6e2a152f22a40ff69d92cb397223c906017e1391a73c952b588e51af8883bf8
+ARG DNS_HEALTHCHECK_IMAGE=registry.gitlab.com/joern_schonhoff/dns-healthcheck:v0.1.2@sha256:419dc6042673a0a9d0893b56821983dd656649603a3fe0175ab168ae6f04d77f
 
-ARG PDNS_VERSION
+# Pull dns-healthcheck into a named stage so it can be referenced in COPY --from
+# (ARG substitution is not supported in COPY --from, only in FROM)
+FROM ${DNS_HEALTHCHECK_IMAGE} AS dns-healthcheck
+
+# Stage 1: Compile powerdns authoritative server from source with all features enabled
+FROM ${DEBIAN_BASE_IMAGE} AS builder
+ARG PDNS_AUTH_VERSION
+RUN test -n "${PDNS_AUTH_VERSION}" || { echo "PDNS_AUTH_VERSION build-arg is required"; exit 1; }
 
 # Install build dependencies
 ENV DEBIAN_FRONTEND=noninteractive
+
+# LuaJIT is effectively unmaintained upstream but still patched by Debian;
+# kept for significantly better performance over Lua 5.4 in packet processing rules.
+# Alternative: replace libluajit-5.1-dev with lua5.4-dev and --with-lua=lua in configure.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		autoconf \
@@ -16,11 +28,12 @@ RUN apt-get update \
 		flex \
 		g++ \
 		gawk \
+		gnupg \
 		libboost-all-dev \
 		libcap2-bin \
 		libcurl4-openssl-dev \
 		libgeoip-dev \
-		liblua5.3-dev \
+		liblua5.4-dev \
 		libluajit-5.1-dev \
 		libmaxminddb-dev \
 		libpq-dev \
@@ -30,7 +43,7 @@ RUN apt-get update \
 		libtool \
 		libyaml-cpp-dev \
 		lua-yaml-dev \
-		lua5.3 \
+		lua5.4 \
 		luajit \
 		make \
 		pkg-config \
@@ -40,11 +53,17 @@ RUN apt-get update \
 		wget \
 	&& apt-get clean
 
+# Official PowerDNS signing keys — keyblock from https://doc.powerdns.com/powerdns-keyblock.asc
+COPY powerdns-keyblock.asc /tmp/powerdns-keyblock.asc
+
 WORKDIR /src
 
-# Download & extract
-RUN wget https://downloads.powerdns.com/releases/pdns-${PDNS_VERSION}.tar.bz2 \
-    && tar xf pdns-${PDNS_VERSION}.tar.bz2 --strip-components=1
+# Verify tarball against detached PGP signature before extracting
+RUN gpg --import /tmp/powerdns-keyblock.asc \
+    && curl -sSL https://downloads.powerdns.com/releases/pdns-${PDNS_AUTH_VERSION}.tar.bz2 -o pdns-${PDNS_AUTH_VERSION}.tar.bz2 \
+	&& curl -sSL https://downloads.powerdns.com/releases/pdns-${PDNS_AUTH_VERSION}.tar.bz2.asc -o pdns-${PDNS_AUTH_VERSION}.tar.bz2.asc \
+    && gpg --verify pdns-${PDNS_AUTH_VERSION}.tar.bz2.asc pdns-${PDNS_AUTH_VERSION}.tar.bz2 \
+    && tar xf pdns-${PDNS_AUTH_VERSION}.tar.bz2 --strip-components=1
 
 # Build and install into /build dir
 RUN ./configure \
@@ -68,35 +87,37 @@ RUN setcap 'cap_net_bind_service=+ep' /build/usr/sbin/pdns_server
 RUN mkdir -p /runtime \
 	&& cp -a /build/* /runtime/
 
-# Collect required shared libs and copy (ldd scanning)
+# Collect shared libraries via ldd; rewrite /lib/ -> /usr/lib/ for parity
+# with the production image (Debian 13 keeps /lib as a symlink to usr/lib)
 RUN find /build -type f -executable -exec sh -c \
 	'for f; do ldd "$f" 2>/dev/null | awk "/=>/ {print \$3}" ; done' sh {} + \
-	| sort -u | grep -E "^/" | xargs -r -I{} cp --parents {} /runtime
+	| sort -u | grep -E "^/" \
+	| while read src; do \
+	    dest=$(echo "$src" | sed 's|^/lib/|/usr/lib/|'); \
+	    mkdir -p "/runtime$(dirname $dest)"; \
+	    cp -L "$src" "/runtime$dest"; \
+	  done
 
 # We also need vim and dependencies for "pdnsutil zone edit" in runtime
 RUN cp -a /usr/bin/vim.basic /runtime/usr/bin/ \
 	&& ldd /usr/bin/vim.basic | awk '/=>/ {print $3}' \
-	| sort -u | grep -E "^/" | xargs -r -I{} cp --parents {} /runtime
+	| sort -u | grep -E "^/" \
+	| while read src; do \
+	    dest=$(echo "$src" | sed 's|^/lib/|/usr/lib/|'); \
+	    mkdir -p "/runtime$(dirname $dest)"; \
+	    cp -L "$src" "/runtime$dest"; \
+	  done
 
-# Convert to UsrMerge layout (Debian 13 requirement)
-# Move /lib, /lib64, /bin, /sbin to /usr and create symlinks
-RUN if [ -d /runtime/lib ]; then \
-		cp -a /runtime/lib/* /runtime/usr/lib/ && rm -rf /runtime/lib && ln -s usr/lib /runtime/lib; \
-	fi \
-	&& if [ -d /runtime/lib64 ]; then \
-		cp -a /runtime/lib64/* /runtime/usr/lib64/ && rm -rf /runtime/lib64 && ln -s usr/lib64 /runtime/lib64; \
-	fi \
-	&& if [ -d /runtime/bin ]; then \
-		cp -a /runtime/bin/* /runtime/usr/bin/ && rm -rf /runtime/bin && ln -s usr/bin /runtime/bin; \
-	fi \
-	&& if [ -d /runtime/sbin ]; then \
-		cp -a /runtime/sbin/* /runtime/usr/sbin/ && rm -rf /runtime/sbin && ln -s usr/sbin /runtime/sbin; \
-	fi
-
-# Create pdns user/group files
+# Preserve base image entries from builder then append pdns
 RUN mkdir -p /runtime/etc \
-    && echo "pdns:x:1000:1000:PowerDNS user:/var/lib/pdns:/sbin/nologin" > /runtime/etc/passwd \
-    && echo "pdns:x:1000:" > /runtime/etc/group
+	&& cp /etc/passwd /runtime/etc/passwd \
+	&& cp /etc/group /runtime/etc/group \
+	&& echo "pdns:x:1000:1000:PowerDNS user:/var/lib/pdns:/sbin/nologin" >> /runtime/etc/passwd \
+	&& echo "pdns:x:1000:" >> /runtime/etc/group
+
+# Strip debug symbols from collected shared libraries to reduce image size
+RUN find /runtime -type f \( -name "*.so" -o -name "*.so.*" \) \
+    -exec strip --strip-unneeded {} + 2>/dev/null || true
 
 # Ensure runtime dirs exist and are owned by pdns
 RUN mkdir -p \
@@ -120,26 +141,26 @@ RUN rm -rf \
 		/runtime/usr/share/doc \
 		/runtime/usr/share/man
 
-FROM gcr.io/distroless/base-debian13:debug AS runtime
+# Stage 2: Debian-based debug runtime — keeps a shell and coreutils for interactive debugging
+FROM ${DEBIAN_BASE_IMAGE} AS runtime
 
-ARG PDNS_VERSION
+ARG PDNS_AUTH_VERSION
 
-LABEL maintainer="Joern Schonhoff <joern.schonhoff@outlook.de>"
-LABEL description="PowerDNS Authoritative Server ${PDNS_VERSION} Debug based on Distroless Debian 13"
-LABEL version="${PDNS_VERSION}"
-LABEL license="MIT"
-LABEL org.opencontainers.image.authors="Joern Schonhoff <joern.schonhoff@outlook.de>"
-LABEL org.opencontainers.image.created="FILLED BY BUILD SYSTEM"
-LABEL org.opencontainers.image.description="PowerDNS Authoritative Server ${PDNS_VERSION} Debug based on Distroless Debian 13"
-LABEL org.opencontainers.image.licenses="MIT"
-LABEL org.opencontainers.image.revision="FILLED BY BUILD SYSTEM"
-LABEL org.opencontainers.image.source="https://gitlab.com/joern_schonhoff/pdns-auth-distroless"
-LABEL org.opencontainers.image.title="pdns-auth-distroless-debug"
-LABEL org.opencontainers.image.url="https://gitlab.com/joern_schonhoff/pdns-auth-distroless"
-LABEL org.opencontainers.image.version="${PDNS_VERSION}"
+# SPDX identifier required by the OCI image-spec for org.opencontainers.image.licenses
+LABEL \
+	org.opencontainers.image.authors="Joern Schonhoff <joerns92@live.com>" \
+    org.opencontainers.image.description="PowerDNS Authoritative Server ${PDNS_AUTH_VERSION} Debug based on Debian 13" \
+    org.opencontainers.image.licenses="GPL-2.0-only" \
+    org.opencontainers.image.source="https://gitlab.com/joern_schonhoff/pdns-auth-distroless" \
+    org.opencontainers.image.title="pdns-auth-distroless-debug" \
+    org.opencontainers.image.url="https://gitlab.com/joern_schonhoff/pdns-auth-distroless" \
+    org.opencontainers.image.version="${PDNS_AUTH_VERSION}"
+	# org.opencontainers.image.created="FILLED BY BUILD SYSTEM"
+	# org.opencontainers.image.revision="FILLED BY BUILD SYSTEM"
 
 # Copy runtime fs from builder
 COPY --from=builder /runtime/ /
+COPY --from=dns-healthcheck /dns-healthcheck /usr/bin/dns-healthcheck
 
 # Expose DNS ports
 EXPOSE 53/tcp 53/udp
@@ -147,5 +168,5 @@ EXPOSE 53/tcp 53/udp
 # Run as pdns user created in /etc/passwd (UID 1000)
 USER 1000:1000
 
-ENTRYPOINT [ "/busybox/sh" ]
+ENTRYPOINT [ "/bin/sh" ]
 CMD [ "-c", "while true; do sleep 100; done" ]
