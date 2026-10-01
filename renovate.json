@@ -1,0 +1,35 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^VERSION$/"],
+      "matchStrings": ["^(?<currentValue>\\d+\\.\\d+\\.\\d+)$"],
+      "datasourceTemplate": "custom.powerdns-releases",
+      "depNameTemplate": "powerdns-auth",
+      "versioningTemplate": "semver"
+    }
+  ],
+  "customDatasources": {
+    "powerdns-releases": {
+      "defaultRegistryUrlTemplate": "https://downloads.powerdns.com/releases/",
+      "format": "html",
+      "transformTemplates": [
+        "{ \"releases\": $sort($distinct($match($string(body), /pdns-(\\d+\\.\\d+\\.\\d+)\\.tar\\.bz2/).groups[0])).{ \"version\": $ }[] }"
+      ]
+    }
+  },
+  "packageRules": [
+    {
+      "matchDatasources": ["custom.powerdns-releases"],
+      "matchPackageNames": ["powerdns-auth"],
+      "groupName": "PowerDNS Authoritative Server",
+      "semanticCommits": "enabled",
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps"
+    }
+  ]
+}
