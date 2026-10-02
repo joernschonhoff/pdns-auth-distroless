@@ -1,0 +1,54 @@
+services:
+  pdns-auth-init-db:
+    container_name: pdns-auth-init-db
+    image: registry.gitlab.com/joern_schonhoff/pdns-auth-init-db:5.1.4
+    env_file:
+      - ./.env.example
+    environment:
+      - PDNS_GSQLITE3_DATABASE=/data/pdns.sqlite3
+    volumes:
+      - sqlite-data:/data
+    networks:
+      - pdns-auth-network
+  pdns-auth-init-conf:
+    container_name: pdns-auth-init-conf
+    image: registry.gitlab.com/joern_schonhoff/pdns-auth-init-conf:0.1.0
+    env_file:
+      - ./.env.example
+    volumes:
+      - pdns-auth-config:/etc/pdns
+    user: 0:0
+    depends_on:
+      pdns-auth-init-db:
+        condition: service_completed_successfully
+    networks:
+      - pdns-auth-network
+  pdns-auth:
+    container_name: pdns-auth
+    image: registry.gitlab.com/joern_schonhoff/pdns-auth-distroless:5.1.4
+    env_file:
+      - ./.env.example
+    ports:
+      - "5353:53"
+    volumes:
+      - pdns-auth-config:/etc/pdns
+      - sqlite-data:/var/lib/pdns
+    depends_on:
+      pdns-auth-init-conf:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/usr/bin/dns-healthcheck", "--check-udp", "--check-tcp"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    networks:
+      - pdns-auth-network
+
+networks:
+  pdns-auth-network:
+    driver: bridge
+
+volumes:
+  pdns-auth-config:
+  sqlite-data:
