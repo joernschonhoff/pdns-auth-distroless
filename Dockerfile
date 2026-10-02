@@ -1,6 +1,6 @@
 ARG DEBIAN_BASE_IMAGE=debian:13-slim@sha256:b6e2a152f22a40ff69d92cb397223c906017e1391a73c952b588e51af8883bf8
 ARG DISTROLESS_IMAGE=gcr.io/distroless/base-debian13@sha256:f2df8702d4dcc45ce76df6cbc14ad1975fcf88a04bd0e8947b6194264f9ab75e
-ARG DNS_HEALTHCHECK_IMAGE=registry.gitlab.com/joern_schonhoff/dns-healthcheck:v0.1.2@sha256:419dc6042673a0a9d0893b56821983dd656649603a3fe0175ab168ae6f04d77f
+ARG DNS_HEALTHCHECK_IMAGE=registry.gitlab.com/joern_schonhoff/dns-healthcheck:v0.1.4@sha256:3192781815e5693f9c2e01238341cdc8330babf716d55f71324585c935d15431
 
 # Pull distroless base into a named stage so it can be referenced in COPY --from
 # (ARG substitution is not supported in COPY --from, only in FROM)
