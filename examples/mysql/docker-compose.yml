@@ -1,0 +1,67 @@
+services:
+  mariadb:
+    container_name: mariadb
+    image: mariadb:13.0.2
+    env_file:
+      - ./.env.example
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pdns-auth-network
+  pdns-auth-init-db:
+    container_name: pdns-auth-init-db
+    image: registry.gitlab.com/joern_schonhoff/pdns-auth-init-db:5.1.4
+    env_file:
+      - ./.env.example
+    networks:
+      - pdns-auth-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+  pdns-auth-init-conf:
+    container_name: pdns-auth-init-conf
+    image: registry.gitlab.com/joern_schonhoff/pdns-auth-init-conf:0.1.0
+    env_file:
+      - ./.env.example
+    volumes:
+      - pdns-auth-config:/etc/pdns
+    user: "0:0"
+    depends_on:
+      pdns-auth-init-db:
+        condition: service_completed_successfully
+    networks:
+      - pdns-auth-network
+  pdns-auth:
+    container_name: pdns-auth
+    image: registry.gitlab.com/joern_schonhoff/pdns-auth-distroless:5.1.4
+    env_file:
+      - ./.env.example
+    ports:
+      - "5353:53"
+      - "8081:8081"
+    volumes:
+      - pdns-auth-config:/etc/pdns
+    depends_on:
+      pdns-auth-init-conf:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/usr/bin/dns-healthcheck", "--check-udp", "--check-tcp"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - pdns-auth-network
+
+networks:
+  pdns-auth-network:
+    driver: bridge
+
+volumes:
+  pdns-auth-config:
+  mariadb-data:
