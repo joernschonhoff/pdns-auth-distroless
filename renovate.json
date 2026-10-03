@@ -3,33 +3,40 @@
   "extends": [
     "config:recommended"
   ],
+  "pinDigests": true,
   "customManagers": [
     {
       "customType": "regex",
+      "description": "Extract PowerDNS Authoritative Server version from VERSION file",
       "managerFilePatterns": ["/^VERSION$/"],
       "matchStrings": ["^(?<currentValue>\\d+\\.\\d+\\.\\d+)$"],
       "datasourceTemplate": "custom.powerdns-releases",
-      "depNameTemplate": "powerdns-auth",
-      "versioningTemplate": "semver"
+      "depNameTemplate": "powerdns-auth"
     }
   ],
   "customDatasources": {
     "powerdns-releases": {
       "defaultRegistryUrlTemplate": "https://downloads.powerdns.com/releases/",
-      "format": "html",
-      "transformTemplates": [
-        "{ \"releases\": $sort($distinct($match($string(body), /pdns-(\\d+\\.\\d+\\.\\d+)\\.tar\\.bz2/).groups[0])).{ \"version\": $ }[] }"
-      ]
+      "format": "html"
     }
   },
   "packageRules": [
     {
+      "description": "PowerDNS Authoritative Server version - update VERSION file",
+      "matchFileNames": ["VERSION"],
       "matchDatasources": ["custom.powerdns-releases"],
-      "matchPackageNames": ["powerdns-auth"],
+      "extractVersion": "^pdns-(?<version>\\d+\\.\\d+\\.\\d+)\\.tar\\.bz2$",
       "groupName": "PowerDNS Authoritative Server",
       "semanticCommits": "enabled",
       "semanticCommitType": "chore",
       "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Disable automatic updates for Docker image digests",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["digest"],
+      "labels": ["dependencies", "docker-digest"],
+      "enabled": false
     }
   ]
 }
