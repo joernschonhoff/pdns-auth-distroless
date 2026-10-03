@@ -1,4 +1,4 @@
-ARG DEBIAN_BASE_IMAGE=debian:13-slim@sha256:b6e2a152f22a40ff69d92cb397223c906017e1391a73c952b588e51af8883bf8
+ARG DEBIAN_BASE_IMAGE=debian:13.7-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 ARG DNS_HEALTHCHECK_IMAGE=registry.gitlab.com/joern_schonhoff/dns-healthcheck:v0.1.4@sha256:3192781815e5693f9c2e01238341cdc8330babf716d55f71324585c935d15431
 
 # Pull dns-healthcheck into a named stage so it can be referenced in COPY --from
