@@ -4,38 +4,55 @@
     "config:recommended"
   ],
   "pinDigests": true,
+  "automerge": false,
+  "prConcurrentLimit": 2,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "commitMessageAction": "update",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "to {{newVersion}}",
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Extract PowerDNS Authoritative Server version from VERSION file",
-      "managerFilePatterns": ["/^VERSION$/"],
-      "matchStrings": ["^(?<currentValue>\\d+\\.\\d+\\.\\d+)$"],
-      "datasourceTemplate": "custom.powerdns-releases",
-      "depNameTemplate": "powerdns-auth"
+      "description": "Extract pdns-auth version from VERSION file",
+      "managerFilePatterns": [
+        "/^VERSION$/"
+      ],
+      "matchStrings": [
+        "^(?<currentValue>\\d+\\.\\d+\\.\\d+)$"
+      ],
+      "datasourceTemplate": "custom.pdns-auth-releases",
+      "depNameTemplate": "pdns-auth"
     }
   ],
   "customDatasources": {
-    "powerdns-releases": {
+    "pdns-auth-releases": {
       "defaultRegistryUrlTemplate": "https://downloads.powerdns.com/releases/",
       "format": "html"
     }
   },
   "packageRules": [
     {
-      "description": "PowerDNS Authoritative Server version - update VERSION file",
-      "matchFileNames": ["VERSION"],
-      "matchDatasources": ["custom.powerdns-releases"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "automerge": true
+    },
+    {
+      "description": "pdns-auth version - update VERSION file",
+      "matchFileNames": [
+        "VERSION"
+      ],
+      "matchDatasources": [
+        "custom.pdns-auth-releases"
+      ],
       "extractVersion": "^pdns-(?<version>\\d+\\.\\d+\\.\\d+)\\.tar\\.bz2$",
-      "groupName": "PowerDNS Authoritative Server",
-      "semanticCommits": "enabled",
-      "semanticCommitType": "chore",
-      "semanticCommitScope": "deps"
+      "commitMessageTopic": "pdns-auth",
+      "groupName": "pdns-auth"
     },
     {
       "description": "Disable automatic updates for Docker image digests",
       "matchDatasources": ["docker"],
       "matchUpdateTypes": ["digest"],
-      "labels": ["dependencies", "docker-digest"],
       "enabled": false
     }
   ]
