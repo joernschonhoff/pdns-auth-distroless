@@ -24,6 +24,18 @@
       ],
       "datasourceTemplate": "custom.pdns-auth-releases",
       "depNameTemplate": "pdns-auth"
+    },
+    {
+      "customType": "regex",
+      "description": "Extract regctl version from .gitlab-ci.yml",
+      "managerFilePatterns": [
+        "/^\\.gitlab-ci\\.yml$/"
+      ],
+      "matchStrings": [
+        "REGCTL_VERSION: (?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "regclient/regclient"
     }
   ],
   "customDatasources": {
@@ -48,6 +60,16 @@
       "extractVersion": "^pdns-(?<version>\\d+\\.\\d+\\.\\d+)\\.tar\\.bz2$",
       "commitMessageTopic": "pdns-auth",
       "groupName": "pdns-auth"
+    },
+    {
+      "description": "regctl version - update REGCTL_VERSION in .gitlab-ci.yml",
+      "matchFileNames": [
+        ".gitlab-ci.yml"
+      ],
+      "matchDepNames": [
+        "regclient/regclient"
+      ],
+      "commitMessageTopic": "regctl"
     },
     {
       "description": "Disable automatic updates for Docker image digests",
