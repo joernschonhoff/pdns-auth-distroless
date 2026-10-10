@@ -87,12 +87,13 @@ test:arm64:
 
 # ── cleanup ───────────────────────────────────────────────────────────────────
 # This removes images from the registry if there is no commit tag
-# This should run AFTER test but also if the tests fail
 delete_image:
   stage: cleanup
   needs:
-    - test:amd64
-    - test:arm64
+    - job: test:amd64
+      optional: true
+    - job: test:arm64
+      optional: true
   variables:
     REGCTL_VERSION: v0.11.6
   rules:
