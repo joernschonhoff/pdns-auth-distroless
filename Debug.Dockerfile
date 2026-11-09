@@ -1,5 +1,5 @@
 ARG DEBIAN_BASE_IMAGE=debian:13.7-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
-ARG DNS_HEALTHCHECK_IMAGE=registry.gitlab.com/joern_schonhoff/dns-healthcheck:v0.1.7@sha256:93591b6b22a14d224c9697c8282c2bb3346a0303c63fc10c55466f31e576298d
+ARG DNS_HEALTHCHECK_IMAGE=registry.gitlab.com/joern_schonhoff/dns-healthcheck:v0.1.8@sha256:28aaf6eeed36fad9dfd2871a0d31859e2fa363f7a082cbcc3266397ace9d122e
 
 # Pull dns-healthcheck into a named stage so it can be referenced in COPY --from
 # (ARG substitution is not supported in COPY --from, only in FROM)
